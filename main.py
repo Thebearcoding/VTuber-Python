@@ -1,57 +1,65 @@
-from mediapipe import solutions
-from mediapipe.framework.formats import landmark_pb2
-import numpy as np
 import cv2
 import mediapipe as mp
-from mediapipe.tasks import python
-from mediapipe.tasks.python import vision
 
 
-def draw_landmarks_on_image(bgr_image, detection_result):
-    pose_landmarks_list = detection_result.pose_landmarks
-    annotated_image = np.copy(bgr_image)
+class PoseMeshDetector:
+    def __init__(self,
+                 static_image_mode=False,
+                 max_num_faces=1,
+                 min_detection_confidence=0.5,
+                 min_tracking_confidence=0.5):
+        self.static_image_mode = static_image_mode
+        self.max_num_faces = max_num_faces
+        self.min_detection_confidence = min_detection_confidence
+        self.min_tracking_confidence = min_tracking_confidence
+        self.mpPoses = mp.solutions.pose
+        self.pose_mesh = self.mpPoses.Pose()
+        self.mp_drawing = mp.solutions.drawing_utils
+        self.poseLmsStyle = self.mp_drawing.DrawingSpec(color=(0, 0, 0), thickness=30)
+        self.poseConStyle = self.mp_drawing.DrawingSpec(thickness=5)
+        self.poses = []
 
-    # Loop through the detected poses to visualize.
-    for idx in range(len(pose_landmarks_list)):
-        pose_landmarks = pose_landmarks_list[idx]
+    def find_pose_mesh(self, Img, draw=True):
+        img = cv2.cvtColor(Img, cv2.COLOR_BGR2RGB)
+        result = self.pose_mesh.process(img)
+        imgHeight = img.shape[0]
+        imgWidth = img.shape[1]
 
-        # Draw the pose landmarks.
-        pose_landmarks_proto = landmark_pb2.NormalizedLandmarkList()
-        pose_landmarks_proto.landmark.extend([
-            landmark_pb2.NormalizedLandmark(x=landmark.x, y=landmark.y, z=landmark.z) for landmark in pose_landmarks
-        ])
-        solutions.drawing_utils.draw_landmarks(
-            annotated_image,
-            pose_landmarks_proto,
-            solutions.pose.POSE_CONNECTIONS,
-            solutions.drawing_styles.get_default_pose_landmarks_style())
-    return annotated_image
+        if result.pose_landmarks:
+            poseLms = result.pose_landmarks
+            if draw:
+                # for poseLms in result.pose_landmarks:
+                self.mp_drawing.draw_landmarks(img, result.pose_landmarks, self.mpPoses.POSE_CONNECTIONS,
+                                               self.poseLmsStyle,
+                                               self.poseConStyle)
+            pose = []
+            for i, lm in enumerate(poseLms.landmark):
+                xPos = round(lm.x * imgWidth)
+                yPos = round(lm.y * imgHeight)
+                pose.append([xPos, yPos])
+                cv2.putText(img, str(i), (xPos - 25, yPos + 5), cv2.FONT_HERSHEY_SIMPLEX, 1, (255, 255, 255), 2)
+            self.poses.append(pose)
+            cv2.imshow("img", img)
+        # print(result.pose_landmarks)
+        return img, self.poses
 
 
-# STEP 1: Load the input image.
-img = cv2.imread("image.jpg")
-cv2.imshow("image", img)
+def main():
+    detector = PoseMeshDetector()
+    cap = cv2.VideoCapture(0)
+    while cap.isOpened():
+        success, img = cap.read()
+        if not success:
+            print("Ignoring empty camera frame.")
+            continue
+        imgRGB = cv2.cvtColor(img, cv2.COLOR_BGR2RGB)
+        img, faces = detector.find_pose_mesh(imgRGB)
+        # Pose接收RGB图像
+        if cv2.waitKey(1) & 0xFF == ord('q'):
+            break
+    # 点和线的风格
+    cap.release()
 
-# STEP 2: Create an PoseLandmarker object.
-base_options = python.BaseOptions(model_asset_path='pose_landmarker.task')
-options = vision.PoseLandmarkerOptions(
-    base_options=base_options,
-    output_segmentation_masks=True)
-detector = vision.PoseLandmarker.create_from_options(options)
 
-# STEP 3: Load the input image.
-image = mp.Image.create_from_file("image.jpg")
-
-# STEP 4: Detect pose landmarks from the input image.
-detection_result = detector.detect(image)
-
-# Convert the RGB image to BGR before visualizing.
-bgr_image = cv2.cvtColor(image.numpy_view(), cv2.COLOR_RGB2BGR)
-
-# STEP 5: Process the detection result. In this case, visualize it.
-annotated_image = draw_landmarks_on_image(bgr_image, detection_result)
-cv2.imshow("annotated_image", annotated_image)
-cv2.waitKey(0)
-segmentation_mask = detection_result.segmentation_masks[0].numpy_view()
-visualized_mask = np.repeat(segmentation_mask[:, :, np.newaxis], 3, axis=2) * 255
-cv2.imshow("visualized_mask", visualized_mask)
+if __name__ == "__main__":
+    main()

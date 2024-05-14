@@ -39,7 +39,6 @@ class PoseMeshDetector:
                 # if i == 24 or i == 14 or i == 12 or i == 16 or i == 23 or i == 13 or i == 15:
                 cv2.putText(img, str(i), (xPos - 25, yPos + 5), cv2.FONT_HERSHEY_SIMPLEX, 1, (255, 255, 255), 2)
                 pose.append([xPos, yPos])
-            print(pose)
             self.poses = pose
             # cv2.imshow("img", img)
         # print(result.pose_landmarks)

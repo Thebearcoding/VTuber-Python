@@ -6,6 +6,7 @@ import socket
 import math
 import sys
 import numpy as np
+from stabilizer import Stabilizer
 
 port = 5066
 alpha = 0.6
@@ -44,42 +45,66 @@ def print_debug_msg(info):
     # print(msg)
 
 
-def get_leg_ro(poses, alpha):
+# 初始化卡尔曼滤波器
+kf_rk = Stabilizer(state_num=2, measure_num=1, cov_process=1e-5, cov_measure=1e-2)
+kf_rh = Stabilizer(state_num=2, measure_num=1, cov_process=1e-5, cov_measure=1e-2)
+kf_lk = Stabilizer(state_num=2, measure_num=1, cov_process=1e-5, cov_measure=1e-2)
+kf_lh = Stabilizer(state_num=2, measure_num=1, cov_process=1e-5, cov_measure=1e-2)
+
+
+def get_leg_ro(poses):
     # 右腿
-    rhu_kne_vec = np.array([poses[26][0] - poses[24][0], poses[26][1] - poses[24][1]])  # 右臀膝向量
-    rkn_ank_vec = np.array([poses[28][0] - poses[26][0], poses[28][1] - poses[26][1]])  # 右膝踝向量
-    rsh_hu_vec = np.array([poses[12][0] - poses[24][0], poses[12][1] - poses[24][1]])  # 右肩到右臀向量
+    rhu_kne_vec = np.array([poses[26][0] - poses[24][0], poses[26][1] - poses[24][1]])
+    rkn_ank_vec = np.array([poses[28][0] - poses[26][0], poses[28][1] - poses[26][1]])
+    rsh_hu_vec = np.array([poses[12][0] - poses[24][0], poses[12][1] - poses[24][1]])
     mod_rhu_kne = np.sqrt(rhu_kne_vec.dot(rhu_kne_vec)) + 1e-6
     mod_rkn_ank = np.sqrt(rkn_ank_vec.dot(rkn_ank_vec)) + 1e-6
     mod_rsh_hu = np.sqrt(rsh_hu_vec.dot(rsh_hu_vec)) + 1e-6
     theta_rk = math.acos(rhu_kne_vec.dot(rkn_ank_vec) / mod_rhu_kne / mod_rkn_ank)
     theta_rh = math.acos(rsh_hu_vec.dot(rhu_kne_vec) / mod_rsh_hu / mod_rhu_kne)
-    roRThigh = alpha * ((180 - np.rad2deg(theta_rk)) / 10)
-    roRShoulderHip = alpha * ((180 - np.rad2deg(theta_rh)) / 10)
 
-    print("theta_rhkna=" + str(np.rad2deg(theta_rk)) + ", roRThigh=" + str(roRThigh))
-    print("theta_rshu=" + str(np.rad2deg(theta_rh)) + ", roRShoulderHip=" + str(roRShoulderHip))
+    # 使用卡尔曼滤波平滑角度
+    kf_rk.update([theta_rk])
+    kf_rh.update([theta_rh])
+    theta_rk = kf_rk.state[0]
+    theta_rh = kf_rh.state[0]
+
+    roRThigh = alpha * (np.rad2deg(theta_rk) / 3)
+    roRShoulderHip = alpha * ((180 - np.rad2deg(theta_rh)) / 3)
+    print("theta_rshk=" + str(np.rad2deg(theta_rh)) + ", roRShoulderHip=" + str(roRShoulderHip))
 
     # 左腿
-    lhu_kne_vec = np.array([poses[25][0] - poses[23][0], poses[25][1] - poses[23][1]])  # 左臀膝向量
-    lkn_ank_vec = np.array([poses[27][0] - poses[25][0], poses[27][1] - poses[25][1]])  # 左膝踝向量
-    lsh_hu_vec = np.array([poses[11][0] - poses[23][0], poses[11][1] - poses[23][1]])  # 左肩到左臀向量
+    lhu_kne_vec = np.array([poses[25][0] - poses[23][0], poses[25][1] - poses[23][1]])
+    lkn_ank_vec = np.array([poses[27][0] - poses[25][0], poses[27][1] - poses[25][1]])
+    lsh_hu_vec = np.array([poses[11][0] - poses[23][0], poses[11][1] - poses[23][1]])
     mod_lhu_kne = np.sqrt(lhu_kne_vec.dot(lhu_kne_vec)) + 1e-6
     mod_lkn_ank = np.sqrt(lkn_ank_vec.dot(lkn_ank_vec)) + 1e-6
     mod_lsh_hu = np.sqrt(lsh_hu_vec.dot(lsh_hu_vec)) + 1e-6
     theta_lk = math.acos(lhu_kne_vec.dot(lkn_ank_vec) / mod_lhu_kne / mod_lkn_ank)
     theta_lh = math.acos(lsh_hu_vec.dot(lhu_kne_vec) / mod_lsh_hu / mod_lhu_kne)
-    roLThigh = alpha * ((180 - np.rad2deg(theta_lk)) / 10)
-    roLShoulderHip = alpha * ((180 - np.rad2deg(theta_lh)) / 10)
 
-    print("theta_lhkna=" + str(np.rad2deg(theta_lk)) + ", roLThigh=" + str(roLThigh))
-    print("theta_lshu=" + str(np.rad2deg(theta_lh)) + ", roLShoulderHip=" + str(roLShoulderHip))
+    # 使用卡尔曼滤波平滑角度
+    kf_lk.update([theta_lk])
+    kf_lh.update([theta_lh])
+    theta_lk = kf_lk.state[0]
+    theta_lh = kf_lh.state[0]
+
+    roLThigh = alpha * (np.rad2deg(theta_lk) / 3)
+    roLShoulderHip = alpha * ((180 - np.rad2deg(theta_lh)) / 3)
+    print("theta_lshk=" + str(np.rad2deg(theta_lh)) + ", roLShoulderHip=" + str(roLShoulderHip))
 
     return roRThigh, roLThigh, roRShoulderHip, roLShoulderHip
 
 
+# 初始化卡尔曼滤波器
+kf_le = Stabilizer(state_num=2, measure_num=1, cov_process=1e-5, cov_measure=1e-2)
+kf_ls = Stabilizer(state_num=2, measure_num=1, cov_process=1e-5, cov_measure=1e-2)
+kf_re = Stabilizer(state_num=2, measure_num=1, cov_process=1e-5, cov_measure=1e-2)
+kf_rs = Stabilizer(state_num=2, measure_num=1, cov_process=1e-5, cov_measure=1e-2)
+
+
 def get_arm_ro(poses):
-    # left arm
+    # 左臂
     lse_vec = np.array([poses[13][0] - poses[11][0], poses[13][1] - poses[11][1]])
     lew_vec = np.array([poses[13][0] - poses[15][0], poses[13][1] - poses[15][1]])
     lhs_vec = np.array([poses[11][0] - poses[23][0], poses[11][1] - poses[23][1]])
@@ -90,12 +115,17 @@ def get_arm_ro(poses):
     tem = lhs_vec.dot(lse_vec) / mod_lhs / mod_lse
     theta_le = math.acos(tmp)
     theta_ls = math.acos(tem)
-    print("theta_lsew=" + str(np.rad2deg(theta_le)) + " theta_lhse=" + str(np.rad2deg(theta_ls)))
-    # print(np.rad2deg(theta_s))
+
+    # 使用卡尔曼滤波平滑角度
+    kf_le.update([theta_le])
+    kf_ls.update([theta_ls])
+    theta_le = kf_le.state[0]
+    theta_ls = kf_ls.state[0]
+
     roL4Arm = alpha * ((180 - np.rad2deg(theta_le)) / 10)
     roLUArm = alpha * ((180 - np.rad2deg(theta_ls)) / 10)
-    print("roL4Arm=" + str(roL4Arm) + " " + "roLUArm=" + str(roLUArm))
-    # right arm
+
+    # 右臂
     rse_vec = np.array([poses[14][0] - poses[12][0], poses[14][1] - poses[12][1]])
     rew_vec = np.array([poses[14][0] - poses[16][0], poses[14][1] - poses[16][1]])
     rhs_vec = np.array([poses[12][0] - poses[24][0], poses[12][1] - poses[24][1]])
@@ -106,19 +136,27 @@ def get_arm_ro(poses):
     tem = rhs_vec.dot(rse_vec) / mod_rhs / mod_rse
     theta_re = math.acos(tmp)
     theta_rs = math.acos(tem)
-    print("theta_rsew=" + str(np.rad2deg(theta_re)) + " theta_rhse=" + str(np.rad2deg(theta_rs)))
+
+    # 使用卡尔曼滤波平滑角度
+    kf_re.update([theta_re])
+    kf_rs.update([theta_rs])
+    theta_re = kf_re.state[0]
+    theta_rs = kf_rs.state[0]
+
     roR4Arm = alpha * ((180 - np.rad2deg(theta_re)) / 10)
     roRUArm = alpha * ((180 - np.rad2deg(theta_rs)) / 10)
-    print("roR4Arm=" + str(roR4Arm) + " " + "roRUArm=" + str(roRUArm))
+
     return roL4Arm, roLUArm, roR4Arm, roRUArm
 
 
+
+
 def main():
-    cap = cv2.VideoCapture(args.cam)
+    cap = cv2.VideoCapture('test.mp4')
     detector = PoseMeshDetector()
     success, img = cap.read()
     s = init_tcp()
-    while cap.isOpened():
+    while success:
         success, img = cap.read()
         if not success:
             print("Ignoring empty camera frame.")
@@ -127,8 +165,10 @@ def main():
         img_pose_mesh, poses = detector.find_pose_mesh(imgRGB)
         if poses:
             roL4Arm, roLUArm, roR4Arm, roRUArm = get_arm_ro(poses)
+            roRThigh, roLThigh, roRShoulderHip, roLShoulderHip = get_leg_ro(poses)
             if args.connect:
-                send_info_to_unity(s, (roL4Arm, roLUArm, roR4Arm, roRUArm))
+                send_info_to_unity(s, (
+                    roL4Arm, roLUArm, roR4Arm, roRUArm, roLShoulderHip, roLThigh, roRShoulderHip, roRThigh))
         # if poses:
         #     # print(poses)
         cv2.imshow("Pose Landmark", img_pose_mesh)

@@ -36,9 +36,10 @@ class PoseMeshDetector:
             for i, lm in enumerate(poseLms.landmark):
                 xPos = round(lm.x * imgWidth)
                 yPos = round(lm.y * imgHeight)
+                zPos = round(lm.z)
                 # if i == 24 or i == 14 or i == 12 or i == 16 or i == 23 or i == 13 or i == 15:
                 cv2.putText(img, str(i), (xPos - 25, yPos + 5), cv2.FONT_HERSHEY_SIMPLEX, 1, (255, 255, 255), 2)
-                pose.append([xPos, yPos])
+                pose.append([xPos, yPos, zPos])
             self.poses = pose
             # cv2.imshow("img", img)
         # print(result.pose_landmarks)
